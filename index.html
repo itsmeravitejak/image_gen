@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Generation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <div class="container mt-4">
+        <h2 class="text-center">Image Generation</h2>
+        <div id="models-list" class="list-group mb-4"></div>
+        <div id="scenarios-list"></div>
+        <div id="images-container" class="mt-4"></div>
+    </div>
+    
+    <script>
+        $(document).ready(function () {
+            let userCode = prompt("Enter your API code:");
+            if (!userCode) {
+                alert("API code is required!");
+                return;
+            }
+
+            function showLoading(element) {
+                $(element).html('<div class="text-center"><div class="spinner-border" role="status"></div></div>');
+            }
+
+            function fetchModels() {
+                showLoading("#models-list");
+                $.get("https://image-gen-py.azurewebsites.net/api/get_models", { code: userCode }, function (data) {
+                    let modelsHtml = data.map(model => `<button class="list-group-item list-group-item-action model-item" data-token="${model.token}" data-model="${model.version}">${model.display_name} - ${model.description}</button>`).join('');
+                    $("#models-list").html(modelsHtml);
+                });
+            }
+
+            function fetchScenarios(modelToken, modelName) {
+                showLoading("#scenarios-list");
+                $.get("https://image-gen-py.azurewebsites.net/api/get_scenarios", { code: userCode }, function (data) {
+                    let groupedScenarios = {};
+                    data.forEach(item => {
+                        if (!groupedScenarios[item.category]) {
+                            groupedScenarios[item.category] = [];
+                        }
+                        groupedScenarios[item.category].push(item);
+                    });
+
+                    let scenariosHtml = '<div class="accordion" id="scenariosAccordion">';
+                    Object.keys(groupedScenarios).forEach((category, index) => {
+                        scenariosHtml += `
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading${index}">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse${index}" aria-expanded="true" aria-controls="collapse${index}">
+                                        ${category}
+                                    </button>
+                                </h2>
+                                <div id="collapse${index}" class="accordion-collapse collapse" aria-labelledby="heading${index}" data-bs-parent="#scenariosAccordion">
+                                    <div class="accordion-body">
+                                        <div class="list-group">
+                                            ${groupedScenarios[category].map(scene => `<button class="list-group-item list-group-item-action scene-item" data-token="${modelToken}" data-model="${modelName}" data-prompt="${scene.prompt}">${scene.scene}</button>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>`;
+                    });
+                    scenariosHtml += '</div>';
+                    $("#scenarios-list").html(scenariosHtml);
+                });
+            }
+
+            function generateImage(modelToken, modelName, prompt) {
+                showLoading("#images-container");
+                $.get("https://image-gen-py.azurewebsites.net/api/gen_image", { code: userCode, name: modelToken, model: modelName, prompt: prompt }, function (response) {
+                    if (response.status) {
+                        let imagesHtml = response.urls.map(url => `<img src="${url}" class="img-fluid rounded mt-2" alt="Generated Image">`).join('');
+                        $("#images-container").html(imagesHtml);
+                    }
+                });
+            }
+
+            $(document).on("click", ".model-item", function () {
+                let modelToken = $(this).data("token");
+                let modelName = $(this).data("model");
+                fetchScenarios(modelToken, modelName);
+            });
+
+            $(document).on("click", ".scene-item", function () {
+                let modelToken = $(this).data("token");
+                let modelName = $(this).data("model");
+                let prompt = $(this).data("prompt");
+                generateImage(modelToken, modelName, prompt);
+            });
+
+            fetchModels();
+        });
+    </script>
+</body>
+</html>
